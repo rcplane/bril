@@ -1,0 +1,2 @@
+command = "cat {filename} | bril2json | python ../../docs/tools/countaddmult.py | tee {base}.cam ; cat {filename} | bril2json | grep -c fadd | tee {base}.gfa ; cat {filename} | bril2json | grep -c fmul | tee {base}.gfm ; true"
+output.counts = "-"
