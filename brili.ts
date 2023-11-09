@@ -1,5 +1,9 @@
+//import { stringContains } from 'https://esm.sh/typescript@5.0.4';
+import { ExitStatus } from 'https://esm.sh/typescript@5.0.4';
 import * as bril from './bril-ts/bril.ts';
 import {readStdin, unreachable} from './bril-ts/util.ts';
+//import * as Deno from "deno";
+//import { copy } from "https://deno.land/std@0.205.0/fs/copy.ts";
 
 /**
  * An interpreter error to print to the console.
@@ -42,10 +46,13 @@ export class Key {
  * A Heap maps Keys to arrays of a given type.
  */
 export class Heap<X> {
-
     private readonly storage: Map<number, X[]>
-    constructor() {
-        this.storage = new Map()
+    constructor(other?: Heap<X> | undefined) {
+        if (other) {
+            this.storage = structuredClone(other.storage);
+        } else {
+            this.storage = new Map();
+        }
     }
 
     isEmpty(): boolean {
@@ -54,20 +61,20 @@ export class Heap<X> {
 
     private count = 0;
     private getNewBase():number {
-        let val = this.count;
+        const val = this.count;
         this.count++;
         return val;
     }
 
     private freeKey(key:Key) {
-        return;
+      return;
     }
 
     alloc(amt:number): Key {
         if (amt <= 0) {
             throw error(`cannot allocate ${amt} entries`);
         }
-        let base = this.getNewBase();
+        const base = this.getNewBase();
         this.storage.set(base, new Array(amt))
         return new Key(base, 0);
     }
@@ -82,7 +89,7 @@ export class Heap<X> {
     }
 
     write(key: Key, val: X) {
-        let data = this.storage.get(key.base);
+        const data = this.storage.get(key.base);
         if (data && data.length > key.offset && key.offset >= 0) {
             data[key.offset] = val;
         } else {
@@ -91,7 +98,7 @@ export class Heap<X> {
     }
 
     read(key: Key): X {
-        let data = this.storage.get(key.base);
+        const data = this.storage.get(key.base);
         if (data && data.length > key.offset && key.offset >= 0) {
             return data[key.offset];
         } else {
@@ -152,7 +159,7 @@ type Pointer = {
   type: bril.Type;
 }
 
-type Value = boolean | BigInt | Pointer | number | string;
+type Value = boolean | bigint | Pointer | number | string;
 type Env = Map<bril.Ident, Value>;
 
 /**
@@ -165,13 +172,28 @@ function typeCheck(val: Value, typ: bril.Type): boolean {
     return typeof val === "boolean";
   } else if (typ === "float") {
     return typeof val === "number";
-  } else if (typeof typ === "object" && typ.hasOwnProperty("ptr")) {
-    return val.hasOwnProperty("loc");
+  } else if (typeof typ === "object" && Object.prototype.hasOwnProperty.call(typ, "ptr")) {
+    return Object.prototype.hasOwnProperty.call(val, "loc");
   } else if (typ === "char") {
     return typeof val === "string";
   }
   throw error(`unknown type ${typ}`);
 }
+
+/*
+const cloneValue = (val: Value): Value => {
+    switch (typeof val) {
+        case 'string':
+        case 'number':
+        case 'bigint':
+        case 'boolean':
+        case 'symbol':
+        case 'undefined':
+        case 'object':
+        case 'function':
+    }
+};
+*/
 
 /**
  * Check whether the types are equal.
@@ -180,7 +202,7 @@ function typeCmp(lhs: bril.Type, rhs: bril.Type): boolean {
   if (lhs === "int" || lhs == "bool" || lhs == "float" || lhs == "char") {
     return lhs == rhs;
   } else {
-    if (typeof rhs === "object" && rhs.hasOwnProperty("ptr")) {
+    if (typeof rhs === "object" && Object.prototype.hasOwnProperty.call(rhs, "ptr")) {
       return typeCmp(lhs.ptr, rhs.ptr);
     } else {
       return false;
@@ -189,7 +211,7 @@ function typeCmp(lhs: bril.Type, rhs: bril.Type): boolean {
 }
 
 function get(env: Env, ident: bril.Ident) {
-  let val = env.get(ident);
+  const val = env.get(ident);
   if (typeof val === 'undefined') {
     throw error(`undefined variable ${ident}`);
   }
@@ -197,7 +219,7 @@ function get(env: Env, ident: bril.Ident) {
 }
 
 function findFunc(func: bril.Ident, funcs: readonly bril.Function[]) {
-  let matches = funcs.filter(function (f: bril.Function) {
+  const matches = funcs.filter(function (f: bril.Function) {
     return f.name === func;
   });
 
@@ -216,8 +238,8 @@ function alloc(ptrType: bril.ParamType, amt:number, heap:Heap<Value>): Pointer {
   } else if (amt <= 0) {
     throw error(`must allocate a positive amount of memory: ${amt} <= 0`);
   } else {
-    let loc = heap.alloc(amt)
-    let dataType = ptrType.ptr;
+    const loc = heap.alloc(amt)
+    const dataType = ptrType.ptr;
     return {
       loc: loc,
       type: dataType
@@ -230,14 +252,14 @@ function alloc(ptrType: bril.ParamType, amt:number, heap:Heap<Value>): Pointer {
  * throw an exception otherwise.
  */
 function checkArgs(instr: bril.Operation, count: number) {
-  let found = instr.args ? instr.args.length : 0;
+  const found = instr.args ? instr.args.length : 0;
   if (found != count) {
     throw error(`${instr.op} takes ${count} argument(s); got ${found}`);
   }
 }
 
 function getPtr(instr: bril.Operation, env: Env, index: number): Pointer {
-  let val = getArgument(instr, env, index);
+  const val = getArgument(instr, env, index);
   if (typeof val !== 'object' || val instanceof BigInt) {
     throw `${instr.op} argument ${index} must be a Pointer`;
   }
@@ -245,11 +267,11 @@ function getPtr(instr: bril.Operation, env: Env, index: number): Pointer {
 }
 
 function getArgument(instr: bril.Operation, env: Env, index: number, typ?: bril.Type) {
-  let args = instr.args || [];
+  const args = instr.args || [];
   if (args.length <= index) {
     throw error(`${instr.op} expected at least ${index+1} arguments; got ${args.length}`);
   }
-  let val = get(env, args[index]);
+  const val = get(env, args[index]);
   if (typ && !typeCheck(val, typ)) {
     throw error(`${instr.op} argument ${index} must be a ${typ}`);
   }
@@ -303,18 +325,30 @@ type Action =
   {"action": "speculate"} |
   {"action": "commit"} |
   {"action": "abort", "label": bril.Ident};
-let NEXT: Action = {"action": "next"};
+const NEXT: Action = {"action": "next"};
 
 /**
  * The interpreter state that's threaded through recursive calls.
  */
 type State = {
   env: Env,
-  readonly heap: Heap<Value>,
+  heap: Heap<Value>,
   readonly funcs: readonly bril.Function[],
 
   // For profiling: a total count of the number of instructions executed.
   icount: bigint,
+
+  // For Tracing:
+  // file to write trace to, otherwise logs to console
+  tracingFile: string,
+  // buffer to store trace json string, emitted at end of function
+  // if it gets too large, we stop capturing the trace
+  traceBuffer: string[],
+  // whether to emit the captured trace.
+  captureTrace: boolean,
+  emitTrace: boolean,
+  // Heuristic: emit trace if a function has at least two br or jmp instructions.
+  branchCount: bigint,
 
   // For SSA (phi-node) execution: keep track of recently-seen labels.j
   curlabel: string | null,
@@ -329,24 +363,24 @@ type State = {
  */
 function evalCall(instr: bril.Operation, state: State): Action {
   // Which function are we calling?
-  let funcName = getFunc(instr, 0);
-  let func = findFunc(funcName, state.funcs);
+  const funcName = getFunc(instr, 0);
+  const func = findFunc(funcName, state.funcs);
   if (func === null) {
     throw error(`undefined function ${funcName}`);
   }
 
-  let newEnv: Env = new Map();
+  const newEnv: Env = new Map();
 
   // Check arity of arguments and definition.
-  let params = func.args || [];
-  let args = instr.args || [];
+  const params = func.args || [];
+  const args = instr.args || [];
   if (params.length !== args.length) {
     throw error(`function expected ${params.length} arguments, got ${args.length}`);
   }
 
   for (let i = 0; i < params.length; i++) {
     // Look up the variable in the current (calling) environment.
-    let value = get(state.env, args[i]);
+    const value = get(state.env, args[i]);
 
     // Check argument types
     if (!typeCheck(value, params[i].type)) {
@@ -357,18 +391,36 @@ function evalCall(instr: bril.Operation, state: State): Action {
     newEnv.set(params[i].name, value);
   }
 
+  // TODO can we also memoize using argument and result traces to avoid exact repeat computations?
   // Invoke the interpreter on the function.
-  let newState: State = {
+  const newState: State = {
     env: newEnv,
     heap: state.heap,
     funcs: state.funcs,
     icount: state.icount,
+    tracingFile: state.tracingFile,
+    traceBuffer: state.traceBuffer,
+    captureTrace: state.captureTrace,  // TODO can we re-enable tracing after buffer size exceeded, function white list?
+    emitTrace: state.emitTrace,
+    branchCount: state.branchCount,
     lastlabel: null,
     curlabel: null,
     specparent: null,  // Speculation not allowed.
   }
-  let retVal = evalFunc(func, newState);
+  const retVal = evalFunc(func, newState);
   state.icount = newState.icount;
+
+  if (state.captureTrace) {
+    if (state.emitTrace) {
+      // emit trace to tracing file or console
+      if (state.tracingFile != "") {
+        Deno.writeTextFileSync(state.tracingFile!, JSON.stringify(`{TRACE_START:${funcName}}\n${state.traceBuffer.join('')}\n{TRACE_END:${funcName}}\n`));
+      } else {
+        console.log(JSON.stringify(`{TRACE_START:${funcName}}\n${state.traceBuffer.join('')}\n{TRACE_END:${funcName}}`));
+      }
+      state.traceBuffer = []; // reset trace buffer
+    }
+  }
 
   // Dynamically check the function's return value and type.
   if (!('dest' in instr)) {  // `instr` is an `EffectOperation`.
@@ -411,12 +463,12 @@ function evalCall(instr: bril.Operation, state: State): Action {
  * instruction or "end" to terminate the function.
  */
 function evalInstr(instr: bril.Instruction, state: State): Action {
-  console.log(JSON.stringify(instr));
+  //console.log(JSON.stringify(instr)); // instead conditionally emit trace at end of function
   state.icount += BigInt(1);
 
   // Check that we have the right number of arguments.
   if (instr.op !== "const") {
-    let count = argCounts[instr.op];
+    const count = argCounts[instr.op];
     if (count === undefined) {
       throw error("unknown opcode " + instr.op);
     } else if (count !== null) {
@@ -431,8 +483,39 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
     throw error(`${instr.op} not allowed during speculation`);
   }
 
+  // call and ret are never emitted to streamline interprocedural trace inlining
+  if (state.captureTrace && instr.op !== 'call' && instr.op !== 'ret') {
+    if (state.captureTrace) {
+      state.traceBuffer.push(JSON.stringify(instr));
+      if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
+        if (state.traceBuffer.length > 10000) {
+          // trace too large, stop capturing and reset
+          state.traceBuffer = [];
+          state.captureTrace = false;
+          state.emitTrace = false;
+          console.error('Trace buffer size 10000 instructions exceeded, disabling tracing for remainder of program');
+        }
+      }
+      if (instr.op === 'br' || instr.op === 'jmp') {
+        if (state.branchCount <= BigInt(2)) {
+          state.branchCount = state.branchCount + BigInt(1);
+        } else if (state.branchCount === BigInt(3)) {
+          state.emitTrace = true;
+          state.branchCount = state.branchCount + BigInt(1);
+        }
+        //else {}
+        if (instr.op === 'br') {
+          // we must capture branch condition to reliably generate guards
+          state.traceBuffer.push(`br condition: ${getBool(instr, state.env, 0)}\n`);
+        }
+        // jmp is not conditional , we'll just capture it in the trace
+      }
+    }
+  }
+    
+
   switch (instr.op) {
-  case "const":
+  case "const": {
     // Interpret JSON numbers as either ints or floats.
     let value: Value;
     if (typeof instr.value === "number") {
@@ -446,12 +529,12 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
     } else {
       value = instr.value;
     }
-
     state.env.set(instr.dest, value);
     return NEXT;
+  }
 
   case "id": {
-    let val = getArgument(instr, state.env, 0);
+    const val = getArgument(instr, state.env, 0);
     state.env.set(instr.dest, val);
     return NEXT;
   }
@@ -478,8 +561,8 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "div": {
-    let lhs = getInt(instr, state.env, 0);
-    let rhs = getInt(instr, state.env, 1);
+    const lhs = getInt(instr, state.env, 0);
+    const rhs = getInt(instr, state.env, 1);
     if (rhs === BigInt(0)) {
       throw error(`division by zero`);
     }
@@ -490,112 +573,112 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "le": {
-    let val = getInt(instr, state.env, 0) <= getInt(instr, state.env, 1);
+    const val = getInt(instr, state.env, 0) <= getInt(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "lt": {
-    let val = getInt(instr, state.env, 0) < getInt(instr, state.env, 1);
+    const val = getInt(instr, state.env, 0) < getInt(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "gt": {
-    let val = getInt(instr, state.env, 0) > getInt(instr, state.env, 1);
+    const val = getInt(instr, state.env, 0) > getInt(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "ge": {
-    let val = getInt(instr, state.env, 0) >= getInt(instr, state.env, 1);
+    const val = getInt(instr, state.env, 0) >= getInt(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "eq": {
-    let val = getInt(instr, state.env, 0) === getInt(instr, state.env, 1);
+    const val = getInt(instr, state.env, 0) === getInt(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "not": {
-    let val = !getBool(instr, state.env, 0);
+    const val = !getBool(instr, state.env, 0);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "and": {
-    let val = getBool(instr, state.env, 0) && getBool(instr, state.env, 1);
+    const val = getBool(instr, state.env, 0) && getBool(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "or": {
-    let val = getBool(instr, state.env, 0) || getBool(instr, state.env, 1);
+    const val = getBool(instr, state.env, 0) || getBool(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fadd": {
-    let val = getFloat(instr, state.env, 0) + getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) + getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fsub": {
-    let val = getFloat(instr, state.env, 0) - getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) - getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fmul": {
-    let val = getFloat(instr, state.env, 0) * getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) * getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fdiv": {
-    let val = getFloat(instr, state.env, 0) / getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) / getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fle": {
-    let val = getFloat(instr, state.env, 0) <= getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) <= getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "flt": {
-    let val = getFloat(instr, state.env, 0) < getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) < getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fgt": {
-    let val = getFloat(instr, state.env, 0) > getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) > getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "fge": {
-    let val = getFloat(instr, state.env, 0) >= getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) >= getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "feq": {
-    let val = getFloat(instr, state.env, 0) === getFloat(instr, state.env, 1);
+    const val = getFloat(instr, state.env, 0) === getFloat(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "print": {
-    let args = instr.args || [];
-    let values = args.map(function (i) {
-      let val = get(state.env, i);
-      if (Object.is(-0, val)) { return "-0.00000000000000000" };
+    const args = instr.args || [];
+    const values = args.map(function (i) {
+      const val = get(state.env, i);
+      if (Object.is(-0, val)) { return "-0.00000000000000000" }
       if (typeof val == "number") { return val.toFixed(17) } else {return val.toString()}}
     );
     console.log(...values);
@@ -607,7 +690,7 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "br": {
-    let cond = getBool(instr, state.env, 0);
+    const cond = getBool(instr, state.env, 0);
     if (cond) {
       return {"action": "jump", "label": getLabel(instr, 0)};
     } else {
@@ -616,11 +699,11 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "ret": {
-    let args = instr.args || [];
+    const args = instr.args || [];
     if (args.length == 0) {
       return {"action": "end", "ret": null};
     } else if (args.length == 1) {
-      let val = get(state.env, args[0]);
+      const val = get(state.env, args[0]);
       return {"action": "end", "ret": val};
     } else {
       throw error(`ret takes 0 or 1 argument(s); got ${args.length}`);
@@ -636,31 +719,31 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "alloc": {
-    let amt = getInt(instr, state.env, 0);
-    let typ = instr.type;
-    if (!(typeof typ === "object" && typ.hasOwnProperty('ptr'))) {
+    const amt = getInt(instr, state.env, 0);
+    const typ = instr.type;
+    if (!(typeof typ === "object" && Object.prototype.hasOwnProperty.call(typ, 'ptr'))) {
       throw error(`cannot allocate non-pointer type ${instr.type}`);
     }
-    let ptr = alloc(typ, Number(amt), state.heap);
+    const ptr = alloc(typ, Number(amt), state.heap);
     state.env.set(instr.dest, ptr);
     return NEXT;
   }
 
   case "free": {
-    let val = getPtr(instr, state.env, 0);
+    const val = getPtr(instr, state.env, 0);
     state.heap.free(val.loc);
     return NEXT;
   }
 
   case "store": {
-    let target = getPtr(instr, state.env, 0);
+    const target = getPtr(instr, state.env, 0);
     state.heap.write(target.loc, getArgument(instr, state.env, 1, target.type));
     return NEXT;
   }
 
   case "load": {
-    let ptr = getPtr(instr, state.env, 0);
-    let val = state.heap.read(ptr.loc);
+    const ptr = getPtr(instr, state.env, 0);
+    const val = state.heap.read(ptr.loc);
     if (val === undefined || val === null) {
       throw error(`Pointer ${instr.args![0]} points to uninitialized data`);
     } else {
@@ -670,22 +753,22 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "ptradd": {
-    let ptr = getPtr(instr, state.env, 0)
-    let val = getInt(instr, state.env, 1)
+    const ptr = getPtr(instr, state.env, 0)
+    const val = getInt(instr, state.env, 1)
     state.env.set(instr.dest, { loc: ptr.loc.add(Number(val)), type: ptr.type })
     return NEXT;
   }
 
   case "phi": {
-    let labels = instr.labels || [];
-    let args = instr.args || [];
+    const labels = instr.labels || [];
+    const args = instr.args || [];
     if (labels.length != args.length) {
       throw error(`phi node has unequal numbers of labels and args`);
     }
     if (!state.lastlabel) {
       throw error(`phi node executed with no last label`);
     }
-    let idx = labels.indexOf(state.lastlabel);
+    const idx = labels.indexOf(state.lastlabel);
     if (idx === -1) {
       // Last label not handled. Leave uninitialized.
       state.env.delete(instr.dest);
@@ -694,8 +777,8 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
       if (!instr.args || idx >= instr.args.length) {
         throw error(`phi node needed at least ${idx+1} arguments`);
       }
-      let src = instr.args[idx];
-      let val = state.env.get(src);
+      const src = instr.args[idx];
+      const val = state.env.get(src);
       if (val === undefined) {
         state.env.delete(instr.dest);
       } else {
@@ -725,48 +808,48 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "ceq": {
-    let val = getChar(instr, state.env, 0) === getChar(instr, state.env, 1);
+    const val = getChar(instr, state.env, 0) === getChar(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "clt": {
-    let val = getChar(instr, state.env, 0) < getChar(instr, state.env, 1);
+    const val = getChar(instr, state.env, 0) < getChar(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "cle": {
-    let val = getChar(instr, state.env, 0) <= getChar(instr, state.env, 1);
+    const val = getChar(instr, state.env, 0) <= getChar(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "cgt": {
-    let val = getChar(instr, state.env, 0) > getChar(instr, state.env, 1);
+    const val = getChar(instr, state.env, 0) > getChar(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "cge": {
-    let val = getChar(instr, state.env, 0) >= getChar(instr, state.env, 1);
+    const val = getChar(instr, state.env, 0) >= getChar(instr, state.env, 1);
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "char2int": {
-    let code = getChar(instr, state.env, 0).codePointAt(0);
-    let val = BigInt.asIntN(64, BigInt(code as number));
+    const code = getChar(instr, state.env, 0).codePointAt(0);
+    const val = BigInt.asIntN(64, BigInt(code as number));
     state.env.set(instr.dest, val);
     return NEXT;
   }
 
   case "int2char": {
-    let i = getInt(instr, state.env, 0);
+    const i = getInt(instr, state.env, 0);
     if (i > 1114111 || i < 0 || (55295 < i && i < 57344)) {
       throw error(`value ${i} cannot be converted to char`);
     }
-    let val = String.fromCodePoint(Number(i));
+    const val = String.fromCodePoint(Number(i));
     state.env.set(instr.dest, val);
     return NEXT;
   }
@@ -778,11 +861,10 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
 
 function evalFunc(func: bril.Function, state: State): Value | null {
   for (let i = 0; i < func.instrs.length; ++i) {
-    let line = func.instrs[i];
+    const line = func.instrs[i];
     if ('op' in line) {
       // Run an instruction.
-      let action = evalInstr(line, state);
-
+      const action = evalInstr(line, state);
       // Take the prescribed action.
       switch (action.action) {
       case 'end': {
@@ -793,6 +875,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
         // Begin speculation.
         state.specparent = {...state};
         state.env = new Map(state.env);
+        state.heap = new Heap(state.heap);
         break;
       }
       case 'commit': {
@@ -812,6 +895,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
         // count "aborted" instructions.
         Object.assign(state, {
           env: state.specparent.env,
+          heap: state.specparent.heap,
           lastlabel: state.specparent.lastlabel,
           curlabel: state.specparent.curlabel,
           specparent: state.specparent.specparent,
@@ -829,7 +913,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
       if ('label' in action) {
         // Search for the label and transfer control.
         for (i = 0; i < func.instrs.length; ++i) {
-          let sLine = func.instrs[i];
+          const sLine = func.instrs[i];
           if ('label' in sLine && sLine.label === action.label) {
             --i;  // Execute the label next.
             break;
@@ -854,7 +938,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
 }
 
 function parseChar(s: string): string {
-  let c = s;
+  const c = s;
   if ([...c].length === 1) {
     return c;
   } else {
@@ -873,12 +957,12 @@ function parseBool(s: string): boolean {
 }
 
 function parseNumber(s: string): number {
-  let f = parseFloat(s);
+  const f = parseFloat(s);
   // parseFloat and Number have subtly different behaviors for parsing strings
     // parseFloat ignores all random garbage after any valid number
     // Number accepts empty/whitespace only strings and rejects numbers with seperators
   // Use both and only accept the intersection of the results?
-  let f2 = Number(s);
+  const f2 = Number(s);
   if (!isNaN(f) && f === f2) {
     return f;
   } else {
@@ -887,82 +971,159 @@ function parseNumber(s: string): number {
 }
 
 function parseMainArguments(expected: bril.Argument[], args: string[]) : Env {
-  let newEnv: Env = new Map();
-
+  const newEnv: Env = new Map();
   if (args.length !== expected.length) {
     throw error(`mismatched main argument arity: expected ${expected.length}; got ${args.length}`);
   }
-
   for (let i = 0; i < args.length; i++) {
-    let type = expected[i].type;
+    const type = expected[i].type;
     switch (type) {
-      case "int":
-        // https://dev.to/darkmavis1980/you-should-stop-using-parseint-nbf
-        let n: bigint = BigInt(Number(args[i]));
+      case "int": {
+        const n = BigInt(Number(args[i]));
         newEnv.set(expected[i].name, n as Value);
         break;
-      case "float":
-        let f: number = parseNumber(args[i]);
+      }
+      case "float": {
+        const f: number = parseNumber(args[i]);
         newEnv.set(expected[i].name, f as Value);
         break;
-      case "bool":
-        let b: boolean = parseBool(args[i]);
+      }
+      case "bool": {
+        const b: boolean = parseBool(args[i]);
         newEnv.set(expected[i].name, b as Value);
         break;
-      case "char":
-        let c: string = parseChar(args[i]);
+      }
+      case "char": {
+        const c: string = parseChar(args[i]);
         newEnv.set(expected[i].name, c as Value);
         break;
+      }
     }
   }
   return newEnv;
 }
 
 function evalProg(prog: bril.Program) {
-  let heap = new Heap<Value>()
-  let main = findFunc("main", prog.functions);
+  const heap = new Heap<Value>()
+  const main = findFunc("main", prog.functions);
   if (main === null) {
     console.warn(`no main function defined, doing nothing`);
     return;
   }
 
-  // Silly argument parsing to find the `-p` flag.
-  let args: string[] = Array.from(Deno.args);
+  // Parse command line arguments
+  const args: string[] = Array.from(Deno.args);
+  
+  // Check for -p flag to enable optional dynamic instruction count profiling
   let profiling = false;
-  let pidx = args.indexOf('-p');
-  if (pidx > -1) {
+  if (args.includes('-p')) {
     profiling = true;
-    args.splice(pidx, 1);
+    args.splice(args.indexOf('-p'), 1); // remove after handling
   }
 
-  // Remaining arguments are for the main function.k
-  let expected = main.args || [];
-  let newEnv = parseMainArguments(expected, args);
+  // Check for -t flag to specify tracing file or -t without argument to log to console
+  let tracingFile = "";
+  let captureTrace = false;
+  const tracingIndex = args.indexOf('-t');
+  if (tracingIndex > -1) {
+    captureTrace = true;
+    tracingFile = args[tracingIndex + 1];
+    if (!tracingFile) {
+      tracingFile = "";
+      args.splice(tracingIndex, 1);
+    } else {
+      // Check if the tracing file exists and is writable or the user has directory write permissions
+      /*Deno.permissions.query({ name: "write", path: tracingFile }).then(permissions => {
+        if (permissions.state !== "granted") {
+          Deno.stat(tracingFile).then(() => {
+            throw new Error('Tracing file exists but not writable');
+          }).catch(error => {
+            console.error(error);
+          });
+          // Check if the parent directory of the tracing file is writable
+          const tracingDir = tracingFile.substring(0, tracingFile.lastIndexOf('/'));
+          Deno.permissions.query({ name: "write", path: tracingDir }).then(permissions => {
+            if (permissions.state !== "granted") {
+              throw new Error('Tracing file and parent directory not writable');
+            }
+          }).catch(error => {
+            console.error(error);
+          });
+        }
+      }).catch(error => {
+        console.error(error);
+      });*/
+      args.splice(tracingIndex, 2);
+    }
+  }
 
-  let state: State = {
-    funcs: prog.functions,
+  // Allow inline args for backward compatibility, or arguments from a -i file one set per line, not both
+  const expected = main.args || [];
+  // Check for -i flag to specify input file
+  const inputIndex = args.indexOf('-i');
+  if (inputIndex > -1) {
+    const inputFile = args[inputIndex + 1];
+    if (!inputFile) {
+      throw new Error('Input main function args per line file option given but path not provided');
+    }
+    Deno.readTextFile(inputFile).then((input) => {
+      const inputLines = input.trim().split('\n');
+      inputLines.forEach(argSet => {
+        let newEnv: Env;
+        if (inputIndex > -1) {
+          const inputArgs = argSet.trim().split(/\s+/);
+          newEnv = parseMainArguments(expected, inputArgs);
+          const state: State = createState(prog.functions, heap, newEnv, tracingFile, captureTrace);
+          evalFunc(main, state);
+          checkHeap(heap);
+          printProfiling(profiling, state.icount);
+        }
+      });
+    }).catch((error) => {
+      console.error(error);
+    });
+  } else {
+    // Parse inline args remaining after flags as main bril function arguments per usual
+    const newEnv = parseMainArguments(expected, args);
+    const state: State = createState(prog.functions, heap, newEnv, tracingFile, captureTrace);
+    evalFunc(main, state);
+    checkHeap(heap);
+    printProfiling(profiling, state.icount);
+  }
+}
+
+function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracingFile: string, captureTrace: boolean): State {
+  return {
+    funcs,
     heap,
-    env: newEnv,
+    env,
     icount: BigInt(0),
+    tracingFile: tracingFile,
+    traceBuffer: [],
+    captureTrace: captureTrace,
+    emitTrace: false,
+    branchCount: BigInt(0),
     lastlabel: null,
     curlabel: null,
     specparent: null,
-  }
-  evalFunc(main, state);
+  };
+}
 
+function checkHeap(heap: Heap<Value>): void {
   if (!heap.isEmpty()) {
     throw error(`Some memory locations have not been freed by end of execution.`);
   }
+}
 
+function printProfiling(profiling: boolean, icount: bigint): void {
   if (profiling) {
-    console.error(`total_dyn_inst: ${state.icount}`);
+    console.error(`total_dyn_inst: ${icount}`);
   }
-
 }
 
 async function main() {
   try {
-    let prog = JSON.parse(await readStdin()) as bril.Program;
+    const prog = JSON.parse(await readStdin()) as bril.Program;
     evalProg(prog);
   }
   catch(e) {
