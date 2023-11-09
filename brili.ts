@@ -1,5 +1,5 @@
 
-import { insertImports } from 'https://esm.sh/typescript@5.0.4';
+import { pushIfUnique } from 'https://esm.sh/typescript@5.0.4';
 import * as bril from './bril-ts/bril.ts';
 import { readStdin, unreachable } from './bril-ts/util.ts';
 
@@ -326,22 +326,30 @@ type State = {
   tracingFile: string,
   // buffer to store trace json string, emitted at end of function
   // if it gets too large, we stop capturing the trace
-  traceBuffer: string[],
+  traceBuffer: bril.Instruction[],
   // whether we are currently tracing
   tracing: boolean,
-  // name of current function being traced.
-  guardLabel?: string,
+  // The label we are currently tracing from
+  headerLabel: string | null,
   // whether to emit the captured trace.
   emitTrace: boolean,
-  // Heuristic: emit trace if a function has at least two br or jmp instructions.
-  branchCount: number,
 
+  // TraceMap a mapping from functions to traced starting labels
+  traceMap: Map<string, { headerLabel: string, trace: bril.Instruction[] }[]>,
+  
   // For SSA (phi-node) execution: keep track of recently-seen labels.j
   curlabel: string | null,
   lastlabel: string | null,
 
   // For speculation: the state at the point where speculation began.
   specparent: State | null,
+}
+
+// Abort recording of the current trace
+const abortTracing = (state: State) => {
+  state.traceBuffer = [];
+  state.tracing = false;
+  state.headerLabel = null;
 }
 
 /**
@@ -387,9 +395,9 @@ function evalCall(instr: bril.Operation, state: State): Action {
     tracingFile: state.tracingFile,
     traceBuffer: state.traceBuffer,
     tracing: state.tracing,  // TODO can we re-enable tracing after buffer size exceeded, function white list?
-    guardLabel: state.guardLabel,
+    headerLabel: state.headerLabel,
     emitTrace: state.emitTrace,
-    branchCount: state.branchCount,
+    traceMap: state.traceMap,
     lastlabel: null,
     curlabel: null,
     specparent: null,  // Speculation not allowed.
@@ -453,6 +461,8 @@ const uniqueLocals = ({ functions }: bril.Program) => {
   }
 }
 
+const addRecoveryPostfix = (label: string) => `${label}.recover`;
+
 /**
  * Interpret an instruction in a given environment, possibly updating the
  * environment. If the instruction branches to a new label, return that label;
@@ -479,23 +489,13 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   if (state.specparent && ['call', 'ret'].includes(instr.op)) {
     throw error(`${instr.op} not allowed during speculation`);
   }
-/*
-  if (instr.op === 'br' || instr.op === 'jmp') {
-    if (instr.op === 'jmp') {
-      // if jmp is upward in instruction count (decreasing) then start tracing
-    }
-    else if (instr.op === "br") {
-      // if label taken is upward in instruction count (decreasing) then start tracing
-      // branch taken
-    }
-  }
-*/
+
   // call and ret are never emitted to streamline interprocedural trace inlining
   if (state.tracing && instr.op !== 'call' && instr.op !== 'ret') {
     //console.error(`Capturing trace for ${instr.op} instruction`);
     const encoder = new TextEncoder();
     Deno.stderr.write(encoder.encode(`${instr.op} `));
-    state.traceBuffer.push(JSON.stringify(instr));
+    state.traceBuffer.push(instr);
     if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
      if (state.traceBuffer.length > 10000) {
        // trace too large, stop capturing and reset
@@ -505,29 +505,41 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
        console.error('Trace buffer size 10000 instructions exceeded, disabling tracing for remainder of program');
       }
     }
-    if (instr.op === 'br' || instr.op === 'jmp') {
-      if (state.branchCount <= 2) {
-        state.branchCount++;
-      } else if (state.branchCount === 3) {
-        state.emitTrace = true;
-        state.branchCount++;
-      }
-      //else {}
-      if (instr.op === 'br') {
-        // generate appropriate guards based on the condition
-        const trace_condition = getBool(instr, state.env, 0);
-        if (trace_condition) {
-          //state.traceBuffer.push(JSON.stringify(`guard condition orig_funcName`));
-          //{"args": ["b"],"labels": ["orig_funcname"],"op": "guard"}
-          state.traceBuffer.push(JSON.stringify(`{"args": ["${instr.args}"], "labels": ["orig_${state.guardLabel}"],"op": "guard"},`));
-        } else {
-          state.traceBuffer.push(JSON.stringify(`{"args": ["${instr.args}"],"dest": "_${instr.args}","op": "not", "type":"bool"},`));
-          state.traceBuffer.push(JSON.stringify(`{"args": ["_${instr.args}"], "labels": ["orig_${state.guardLabel}"],"op": "guard"},`));
+
+        if (instr.op === 'br' || instr.op === 'jmp') {
+          if (instr.op === 'br') {
+            // generate appropriate guards based on the condition
+            const conditionValue = getBool(instr, state.env, 0);
+            if (state.headerLabel === null) {
+              throw new Error("guard label null");
+            }
+            const recoveryLabel = addRecoveryPostfix(state.headerLabel);
+            if (conditionValue) {
+              state.traceBuffer.push({
+                op: "guard",
+                args: instr.args, 
+                labels: [recoveryLabel]
+              });
+            } else {
+              const [ condition ] = instr.args!;
+              const dest = `${condition}.negated`;
+              // negate the branch condition
+              state.traceBuffer.push({
+                args: instr.args,
+                dest,
+                op: "not", 
+                type: "bool"
+              });
+              state.traceBuffer.push({
+                args: [dest], 
+                labels: [recoveryLabel], 
+                op: "guard"
+              });
+            }
+          }
+        // jmp is not conditional , we'll just capture it in the trace
         }
-      }
-    // jmp is not conditional , we'll just capture it in the trace
     }
-  }
     
 
   switch (instr.op) {
@@ -691,6 +703,8 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "print": {
+    // Can't handle side effects in speculative state.
+    abortTracing(state);
     const args = instr.args || [];
     const values = args.map(function (i) {
       const val = get(state.env, i);
@@ -731,6 +745,8 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "call": {
+    // TODO: implement interprocedural tracing
+    abortTracing(state);
     return evalCall(instr, state);
   }
 
@@ -937,14 +953,24 @@ function evalFunc(func: bril.Function, state: State): Value | null {
             if (i < currentIndex) {
               if (!state.tracing) {
                 // begin tracing
-                state.guardLabel = action.label; //l1
+                state.headerLabel = action.label; //= ".recover"; //l_recover
+                // TODO stitch on // state.traceBuffer.push({"label": action.label + ".trace"});
+                state.traceBuffer.push({"op":"speculate"}) ;
               } else {
+                if (state.headerLabel === null) {
+                  throw new Error("Error: header label null when emitting trace");
+                }
                 // We have traversed another back edge, hopefully to the loop header
                 // When the heursistic is correct, this trace should comprise the loop body
                 // Commit the stateful updates performed by the loop body
-                state.traceBuffer.push(JSON.stringify({ op: "commit" }));
-                // After executing
-                state.traceBuffer.push(JSON.stringify({op: "jmp", "label": [action.label]})); // l2, may equal l1
+                state.traceBuffer.push({ op: "commit" });
+                // After executing the loop body, we should be back to the target of the back edge
+                state.traceBuffer.push({ op: "jmp", labels: [action.label] }); // l2, may equal l1 the headerLabel
+                state.traceMap.get(func.name)?.push({ 
+                  headerLabel: state.headerLabel, 
+                  trace: state.traceBuffer
+                });     
+                state.traceBuffer = [];
               }
               state.tracing = !state.tracing;
             }
@@ -1069,27 +1095,7 @@ function evalProg(prog: bril.Program) {
       //args.splice(tracingIndex, 1);
       throw new Error('Tracing file option given but path not provided');
     } else {
-      // Check if the tracing file exists and is writable or the user has directory write permissions
-      /*Deno.permissions.query({ name: "write", path: tracingFile }).then(permissions => {
-        if (permissions.state !== "granted") {
-          Deno.stat(tracingFile).then(() => {
-            throw new Error('Tracing file exists but not writable');
-          }).catch(error => {
-            console.error(error);
-          });
-          // Check if the parent directory of the tracing file is writable
-          const tracingDir = tracingFile.substring(0, tracingFile.lastIndexOf('/'));
-          Deno.permissions.query({ name: "write", path: tracingDir }).then(permissions => {
-            if (permissions.state !== "granted") {
-              throw new Error('Tracing file and parent directory not writable');
-            }
-          }).catch(error => {
-            console.error(error);
-          });
-        }
-      }).catch(error => {
-        console.error(error);
-      });*/
+      // remove -t and tracing file path from args
       args.splice(tracingIndex, 2);
     }
     console.error(`Tracing to file ${tracingFile}`);
@@ -1114,7 +1120,7 @@ function evalProg(prog: bril.Program) {
         if (inputIndex > -1) {
           const inputArgs = argSet.trim().split(/\s+/);
           newEnv = parseMainArguments(expected, inputArgs);
-          const state: State = createState(prog.functions, heap, newEnv, tracingFile, captureTrace);
+          const state: State = createState(prog.functions, heap, newEnv, tracingFile);
           evalFunc(main, state);
           checkHeap(heap);
           printProfiling(profiling, state.icount);
@@ -1126,25 +1132,29 @@ function evalProg(prog: bril.Program) {
   } else {
     // Parse inline args remaining after flags as main bril function arguments per usual
     const newEnv = parseMainArguments(expected, args);
-    const state: State = createState(prog.functions, heap, newEnv, tracingFile, captureTrace);
+    const state: State = createState(prog.functions, heap, newEnv, tracingFile);
     evalFunc(main, state);
     checkHeap(heap);
     printProfiling(profiling, state.icount);
   }
 }
 
-function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracingFile: string, captureTrace: boolean): State {
+function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracingFile: string): State {
+  const traceMap = new Map();
+  for (const func of funcs) {
+    traceMap.set(func.name, []);
+  }
   return {
     funcs,
     heap,
     env,
     icount: BigInt(0),
+    traceMap,
     tracingFile: tracingFile,
     traceBuffer: [],
-    tracing: captureTrace,
-    guardLabel: "trace1",
+    tracing: false,
+    headerLabel: null,
     emitTrace: false,
-    branchCount: 0,
     lastlabel: null,
     curlabel: null,
     specparent: null,
@@ -1166,10 +1176,6 @@ function printProfiling(profiling: boolean, icount: bigint): void {
 function emitTrace(state: State, funcName: string): void {
   if (state.tracing) {
     if (state.emitTrace) {
-      //state.traceBuffer.push(JSON.stringify(`{"label": "${state.guardLabel}"},`));
-      //if(state.guardLabel) {
-      //  state.guardLabel = `trace${BigInt(state.guardLabel.slice(5)) + BigInt(1)}`;
-      //}
       // emit trace to tracing file or console
       console.log("tracefile is " + state.tracingFile);
       if (state.tracingFile != "") {
