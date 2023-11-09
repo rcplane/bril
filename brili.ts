@@ -1,9 +1,7 @@
-//import { stringContains } from 'https://esm.sh/typescript@5.0.4';
-import { ExitStatus } from 'https://esm.sh/typescript@5.0.4';
+
+import { insertImports } from 'https://esm.sh/typescript@5.0.4';
 import * as bril from './bril-ts/bril.ts';
-import {readStdin, unreachable} from './bril-ts/util.ts';
-//import * as Deno from "deno";
-//import { copy } from "https://deno.land/std@0.205.0/fs/copy.ts";
+import { readStdin, unreachable } from './bril-ts/util.ts';
 
 /**
  * An interpreter error to print to the console.
@@ -180,21 +178,6 @@ function typeCheck(val: Value, typ: bril.Type): boolean {
   throw error(`unknown type ${typ}`);
 }
 
-/*
-const cloneValue = (val: Value): Value => {
-    switch (typeof val) {
-        case 'string':
-        case 'number':
-        case 'bigint':
-        case 'boolean':
-        case 'symbol':
-        case 'undefined':
-        case 'object':
-        case 'function':
-    }
-};
-*/
-
 /**
  * Check whether the types are equal.
  */
@@ -344,11 +327,14 @@ type State = {
   // buffer to store trace json string, emitted at end of function
   // if it gets too large, we stop capturing the trace
   traceBuffer: string[],
+  // whether we are currently tracing
+  tracing: boolean,
+  // name of current function being traced.
+  guardLabel?: string,
   // whether to emit the captured trace.
-  captureTrace: boolean,
   emitTrace: boolean,
   // Heuristic: emit trace if a function has at least two br or jmp instructions.
-  branchCount: bigint,
+  branchCount: number,
 
   // For SSA (phi-node) execution: keep track of recently-seen labels.j
   curlabel: string | null,
@@ -400,7 +386,8 @@ function evalCall(instr: bril.Operation, state: State): Action {
     icount: state.icount,
     tracingFile: state.tracingFile,
     traceBuffer: state.traceBuffer,
-    captureTrace: state.captureTrace,  // TODO can we re-enable tracing after buffer size exceeded, function white list?
+    tracing: state.tracing,  // TODO can we re-enable tracing after buffer size exceeded, function white list?
+    guardLabel: state.guardLabel,
     emitTrace: state.emitTrace,
     branchCount: state.branchCount,
     lastlabel: null,
@@ -410,17 +397,7 @@ function evalCall(instr: bril.Operation, state: State): Action {
   const retVal = evalFunc(func, newState);
   state.icount = newState.icount;
 
-  if (state.captureTrace) {
-    if (state.emitTrace) {
-      // emit trace to tracing file or console
-      if (state.tracingFile != "") {
-        Deno.writeTextFileSync(state.tracingFile!, JSON.stringify(`{TRACE_START:${funcName}}\n${state.traceBuffer.join('')}\n{TRACE_END:${funcName}}\n`));
-      } else {
-        console.log(JSON.stringify(`{TRACE_START:${funcName}}\n${state.traceBuffer.join('')}\n{TRACE_END:${funcName}}`));
-      }
-      state.traceBuffer = []; // reset trace buffer
-    }
-  }
+  emitTrace(state, funcName);
 
   // Dynamically check the function's return value and type.
   if (!('dest' in instr)) {  // `instr` is an `EffectOperation`.
@@ -457,6 +434,26 @@ function evalCall(instr: bril.Operation, state: State): Action {
 }
 
 /**
+ * Uniques each local variable by adding th enclosing function name to the end of 
+ * the variable name. For example, a variable `x` in function `f` becomes `x.f`.
+ */
+const uniqueLocals = ({ functions }: bril.Program) => {
+  for (const func of functions) {
+    for (const arg of func.args ?? []) {
+      arg.name += `.${func.name}`;
+    }
+    for (const instr of func.instrs) {
+      if ('dest' in instr) {
+        instr.dest += `.${func.name}`;
+      }
+      if ('args' in instr) {
+        instr.args = instr.args?.map(arg => `${arg}.${func.name}`) ?? [];
+      }
+    }
+  }
+}
+
+/**
  * Interpret an instruction in a given environment, possibly updating the
  * environment. If the instruction branches to a new label, return that label;
  * otherwise, return "next" to indicate that we should proceed to the next
@@ -464,7 +461,7 @@ function evalCall(instr: bril.Operation, state: State): Action {
  */
 function evalInstr(instr: bril.Instruction, state: State): Action {
   //console.log(JSON.stringify(instr)); // instead conditionally emit trace at end of function
-  state.icount += BigInt(1);
+  state.icount++;
 
   // Check that we have the right number of arguments.
   if (instr.op !== "const") {
@@ -482,34 +479,53 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   if (state.specparent && ['call', 'ret'].includes(instr.op)) {
     throw error(`${instr.op} not allowed during speculation`);
   }
-
+/*
+  if (instr.op === 'br' || instr.op === 'jmp') {
+    if (instr.op === 'jmp') {
+      // if jmp is upward in instruction count (decreasing) then start tracing
+    }
+    else if (instr.op === "br") {
+      // if label taken is upward in instruction count (decreasing) then start tracing
+      // branch taken
+    }
+  }
+*/
   // call and ret are never emitted to streamline interprocedural trace inlining
-  if (state.captureTrace && instr.op !== 'call' && instr.op !== 'ret') {
-    if (state.captureTrace) {
-      state.traceBuffer.push(JSON.stringify(instr));
-      if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
-        if (state.traceBuffer.length > 10000) {
-          // trace too large, stop capturing and reset
-          state.traceBuffer = [];
-          state.captureTrace = false;
-          state.emitTrace = false;
-          console.error('Trace buffer size 10000 instructions exceeded, disabling tracing for remainder of program');
+  if (state.tracing && instr.op !== 'call' && instr.op !== 'ret') {
+    //console.error(`Capturing trace for ${instr.op} instruction`);
+    const encoder = new TextEncoder();
+    Deno.stderr.write(encoder.encode(`${instr.op} `));
+    state.traceBuffer.push(JSON.stringify(instr));
+    if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
+     if (state.traceBuffer.length > 10000) {
+       // trace too large, stop capturing and reset
+       state.traceBuffer = [];
+       state.tracing = false;
+       state.emitTrace = false;
+       console.error('Trace buffer size 10000 instructions exceeded, disabling tracing for remainder of program');
+      }
+    }
+    if (instr.op === 'br' || instr.op === 'jmp') {
+      if (state.branchCount <= 2) {
+        state.branchCount++;
+      } else if (state.branchCount === 3) {
+        state.emitTrace = true;
+        state.branchCount++;
+      }
+      //else {}
+      if (instr.op === 'br') {
+        // generate appropriate guards based on the condition
+        const trace_condition = getBool(instr, state.env, 0);
+        if (trace_condition) {
+          //state.traceBuffer.push(JSON.stringify(`guard condition orig_funcName`));
+          //{"args": ["b"],"labels": ["orig_funcname"],"op": "guard"}
+          state.traceBuffer.push(JSON.stringify(`{"args": ["${instr.args}"], "labels": ["orig_${state.guardLabel}"],"op": "guard"},`));
+        } else {
+          state.traceBuffer.push(JSON.stringify(`{"args": ["${instr.args}"],"dest": "_${instr.args}","op": "not", "type":"bool"},`));
+          state.traceBuffer.push(JSON.stringify(`{"args": ["_${instr.args}"], "labels": ["orig_${state.guardLabel}"],"op": "guard"},`));
         }
       }
-      if (instr.op === 'br' || instr.op === 'jmp') {
-        if (state.branchCount <= BigInt(2)) {
-          state.branchCount = state.branchCount + BigInt(1);
-        } else if (state.branchCount === BigInt(3)) {
-          state.emitTrace = true;
-          state.branchCount = state.branchCount + BigInt(1);
-        }
-        //else {}
-        if (instr.op === 'br') {
-          // we must capture branch condition to reliably generate guards
-          state.traceBuffer.push(`br condition: ${getBool(instr, state.env, 0)}\n`);
-        }
-        // jmp is not conditional , we'll just capture it in the trace
-      }
+    // jmp is not conditional , we'll just capture it in the trace
     }
   }
     
@@ -911,11 +927,27 @@ function evalFunc(func: bril.Function, state: State): Value | null {
       }
       // Move to a label.
       if ('label' in action) {
+        const currentIndex = i;
         // Search for the label and transfer control.
         for (i = 0; i < func.instrs.length; ++i) {
           const sLine = func.instrs[i];
           if ('label' in sLine && sLine.label === action.label) {
             --i;  // Execute the label next.
+            // if jmping upward in instruction count (decreasing) then start or stop tracing
+            if (i < currentIndex) {
+              if (!state.tracing) {
+                // begin tracing
+                state.guardLabel = action.label; //l1
+              } else {
+                // We have traversed another back edge, hopefully to the loop header
+                // When the heursistic is correct, this trace should comprise the loop body
+                // Commit the stateful updates performed by the loop body
+                state.traceBuffer.push(JSON.stringify({ op: "commit" }));
+                // After executing
+                state.traceBuffer.push(JSON.stringify({op: "jmp", "label": [action.label]})); // l2, may equal l1
+              }
+              state.tracing = !state.tracing;
+            }
             break;
           }
         }
@@ -934,6 +966,9 @@ function evalFunc(func: bril.Function, state: State): Value | null {
   if (state.specparent) {
     throw error(`implicit return in speculative state`);
   }
+
+  emitTrace(state, func.name);
+
   return null;
 }
 
@@ -1026,6 +1061,7 @@ function evalProg(prog: bril.Program) {
   let captureTrace = false;
   const tracingIndex = args.indexOf('-t');
   if (tracingIndex > -1) {
+    console.error("should trace");
     captureTrace = true;
     tracingFile = args[tracingIndex + 1];
     if (!tracingFile) {
@@ -1056,6 +1092,10 @@ function evalProg(prog: bril.Program) {
       });*/
       args.splice(tracingIndex, 2);
     }
+    console.error(`Tracing to file ${tracingFile}`);
+    //test write to trace file 
+    //Deno.writeTextFileSync(tracingFile, "test\n");
+    //console.error(`args remaining: ${args}`);
   }
 
   // Allow inline args for backward compatibility, or arguments from a -i file one set per line, not both
@@ -1101,9 +1141,10 @@ function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracin
     icount: BigInt(0),
     tracingFile: tracingFile,
     traceBuffer: [],
-    captureTrace: captureTrace,
+    tracing: captureTrace,
+    guardLabel: "trace1",
     emitTrace: false,
-    branchCount: BigInt(0),
+    branchCount: 0,
     lastlabel: null,
     curlabel: null,
     specparent: null,
@@ -1122,9 +1163,35 @@ function printProfiling(profiling: boolean, icount: bigint): void {
   }
 }
 
+function emitTrace(state: State, funcName: string): void {
+  if (state.tracing) {
+    if (state.emitTrace) {
+      //state.traceBuffer.push(JSON.stringify(`{"label": "${state.guardLabel}"},`));
+      //if(state.guardLabel) {
+      //  state.guardLabel = `trace${BigInt(state.guardLabel.slice(5)) + BigInt(1)}`;
+      //}
+      // emit trace to tracing file or console
+      console.log("tracefile is " + state.tracingFile);
+      if (state.tracingFile != "") {
+        const toWrite = JSON.stringify(`{TRACE_START:${funcName}},\n${state.traceBuffer.join('')},\n{TRACE_END:${funcName}},\n`);
+        if(JSON.parse(toWrite)){
+          Deno.writeTextFileSync(state.tracingFile!, toWrite);
+        } else {
+          throw new Error('Invalid trace JSON');
+        }
+      } else {
+        console.log(JSON.stringify(`{TRACE_START:${funcName}},\n${state.traceBuffer.join('')},\n{TRACE_END:${funcName}},`));
+      }
+      console.error(`Emitted ${state.traceBuffer.length} trace lines for function ${funcName}`);
+      state.traceBuffer = []; // reset trace buffer
+    }
+  }
+}
+
 async function main() {
   try {
     const prog = JSON.parse(await readStdin()) as bril.Program;
+    uniqueLocals(prog);
     evalProg(prog);
   }
   catch(e) {
