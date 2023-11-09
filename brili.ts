@@ -1029,8 +1029,9 @@ function evalProg(prog: bril.Program) {
     captureTrace = true;
     tracingFile = args[tracingIndex + 1];
     if (!tracingFile) {
-      tracingFile = "";
-      args.splice(tracingIndex, 1);
+      //tracingFile = "";
+      //args.splice(tracingIndex, 1);
+      throw new Error('Tracing file option given but path not provided');
     } else {
       // Check if the tracing file exists and is writable or the user has directory write permissions
       /*Deno.permissions.query({ name: "write", path: tracingFile }).then(permissions => {
