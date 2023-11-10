@@ -889,8 +889,24 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   throw error(`unhandled opcode ${(instr as any).op}`);
 }
 
+/**
+ * Look up the index of a label in a function, or throw an exception if not found.
+ * 
+ * @param func a Bril function
+ * @param label the label to search for
+ * @throws if label not found in function 
+ * @returns 
+ */
+const indexOfLabel = (func: bril.Function, label: string): number => {
+  const idx = func.instrs.findIndex(instr => 'label' in instr && instr.label === label);
+  if (idx < 0) {
+    throw error(`Label ${label} not found in function ${func.name}`);
+  }
+  return idx;
+}
+
 function evalFunc(func: bril.Function, state: State): Value | null {
-  for (let i = 0; i < func.instrs.length; ++i) {
+  for (let i = 0; i < func.instrs.length;) {
     const line = func.instrs[i];
     if ('op' in line) {
       // Run an instruction.
@@ -941,42 +957,35 @@ function evalFunc(func: bril.Function, state: State): Value | null {
       }
       // Move to a label.
       if ('label' in action) {
-        const currentIndex = i;
         // Search for the label and transfer control.
-        for (i = 0; i < func.instrs.length; ++i) {
-          const sLine = func.instrs[i];
-          if ('label' in sLine && sLine.label === action.label) {
-            --i;  // Execute the label next.
-            // if jmping upward in instruction count (decreasing) then start or stop tracing
-            if (i < currentIndex) {
-              if (state.tracing) {
-                if (state.headerLabel === null) {
-                  throw new Error("Error: header label null when emitting trace");
-                }
-                // We have traversed another back edge, hopefully to the loop header
-                // When the heursistic is correct, this trace should comprise the loop body
-                // Commit the stateful updates performed by the loop body
-                state.traceBuffer.push({ op: "commit" });
-                // After executing the loop body, we should be back to the target of the back edge
-                state.traceBuffer.push({ op: "jmp", labels: [action.label] }); // l2, may equal l1 the headerLabel
-                // Add the completed trace to the trace map
-                state.traceMap.get(func.name)?.set(state.headerLabel, state.traceBuffer);
-                state.traceBuffer = [];
-                state.tracing = false;
-              } else if (!state.traceMap.get(func.name)?.has(action.label)) {
-                 // If we have not yet recorded a trace for this label, begin tracing
-                 state.headerLabel = action.label; //= ".recover"; //l_recover
-                 // TODO stitch on // state.traceBuffer.push({"label": action.label + ".trace"});
-                 state.traceBuffer.push({ op: "speculate" });
-                 state.tracing = true;
-              }
+        const targetIndex = indexOfLabel(func, action.label);
+        // if jmping upward in instruction count (decreasing) then start or stop tracing
+        if (targetIndex < i) {
+          if (state.tracing) {
+            if (state.headerLabel === null) {
+              throw new Error("Error: header label null when emitting trace");
             }
-            break;
+            // We have traversed another back edge, hopefully to the loop header
+            // When the heursistic is correct, this trace should comprise the loop body
+            // Commit the stateful updates performed by the loop body
+            state.traceBuffer.push({ op: "commit" });
+            // After executing the loop body, we should be back to the target of the back edge
+            state.traceBuffer.push({ op: "jmp", labels: [action.label] }); // l2, may equal l1 the headerLabel
+            // Add the completed trace to the trace map
+            state.traceMap.get(func.name)?.set(state.headerLabel, state.traceBuffer);
+            state.traceBuffer = [];
+            state.tracing = false;
+          } else if (!state.traceMap.get(func.name)?.has(action.label)) {
+            // If we have not yet recorded a trace for this label, begin tracing
+            state.headerLabel = action.label; //= ".recover"; //l_recover
+            // TODO stitch on // state.traceBuffer.push({"label": action.label + ".trace"});
+            state.traceBuffer.push({ op: "speculate" });
+            state.tracing = true;
           }
         }
-        if (i === func.instrs.length) {
-          throw error(`label ${action.label} not found`);
-        }
+        // Move to the target index
+        i = targetIndex;
+        continue;
       }
     } else if ('label' in line) {
       if (state.traceMap.get(func.name)?.has(line.label)) {
@@ -987,6 +996,8 @@ function evalFunc(func: bril.Function, state: State): Value | null {
       state.lastlabel = state.curlabel;
       state.curlabel = line.label;
     }
+    // Increment PC
+    i++;
   }
 
   // Reached the end of the function without hitting `ret`.
