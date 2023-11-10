@@ -22,19 +22,20 @@ We successfully captured, optimized, and measured dynamic instruction counts for
 - initial tests with benchmarks/core/gcd.bril and mem/mat-mul.bril using test/l12/trace.sh
 - [compare.sh script](https://github.com/rcplane/bril/blob/l12/test/l12/compare.sh) and [raw compare output](https://github.com/rcplane/bril/blob/l12/test/l12/compare.out) shows correct outputs running benchmark default and from emitted stitched trace bril json.
 - Unfortunately, we found that the overhead due to tracing was large. Although LVN was in _theory_ effective, upon examining the traces produced we found that they contained few additional opportunities for copy/constant propagation.
--
+- Even if the code always stays "on trace", there is still the overhead present from jumping to the trace and then back out.
+- In the future, we would likely want to support the "trace trees" described in TraceMonkey to allow for nested traces and hot "side exits".
 
-| Benchmark Name | Input Value(s) | Results | Dynamic Instruction Count Default | Dynamic Instruction Count from Trace + DCE + LVN |
-|----------------|----------------|---------|-----------------------------------|-------------------------------------------------|
-| birthday       | 23 traced      | match   | 484     | **325**                   |
-| birthday       | 22             | match   | 463     | **311**                   |
-| birthday       | 50             | match   | 1051    | **703**                   |
-| gcd            | 4 20 traced    | match   | **46**  | 63                        |
-| gcd            | 4 80           | match   | **181** | 243                       |
-| gcd            | 3 21           | match   | **64**  | 87                        |
-| perfect        | 496 traced     | match   | **232** | 371                       |
-| perfect        | 28             | match   | **58**  | 98                        |
-| perfect        | 12             | match   | **37**  | 67                        |
+| Benchmark Name | Input Value(s) | Results | Dyn Instr Count Default | Dyn Instr Count Default + DCE + LVN | Dyn Instr Count from Trace + DCE + LVN |
+|----------------|----------------|---------|-----------|------------------|-------------------|
+| birthday       | 23 traced      | match   | 484     | **254** '*' | 325                   |
+| birthday       | 22             | match   | 463     | **243** '*' | 311                   |
+| birthday       | 50             | match   | 1051    | **551** '*' | 703                   |
+| gcd            | 4 20 traced    | match   | **46**  '*' | **46**  '*' | 63                    |
+| gcd            | 4 80           | match   | **181** '*' | **181** '*' | 243                   |
+| gcd            | 3 21           | match   | **64**  '*' | **64**  '*' | 87                    |
+| perfect        | 496 traced     | match   | 232     | **231** '*' | 371                   |
+| perfect        | 28             | match   | 58      | **57**  '*' | 98                    |
+| perfect        | 12             | match   | 37      | **36**  '*' | 67                    |
  
 
 # Difficulties
