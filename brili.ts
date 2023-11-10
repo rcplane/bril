@@ -1235,7 +1235,7 @@ const stitch = (prog: bril.Program, state: State) => {
 async function main() {
   try {
     const prog = JSON.parse(await readStdin()) as bril.Program;
-    uniqueLocals(prog);
+    // uniqueLocals(prog);
     const state = await evalProg(prog);
     if (state.tracingFile) {
       await emitStitched(prog, state);
