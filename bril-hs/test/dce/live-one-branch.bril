@@ -1,0 +1,10 @@
+@main {
+  # This def is live because i is reassigned in only one path
+  i: int = const 0;
+  cond: bool = const true;
+  br cond .hi .bye;
+.hi:
+  i: int = const 1;
+.bye:
+  print i;
+}

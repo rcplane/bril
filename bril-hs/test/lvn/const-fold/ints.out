@@ -1,0 +1,13 @@
+@main {
+  sum: int = const 10;
+  prod: int = const 16;
+  diff: int = const 6;
+  quot: int = const 4;
+  print sum prod diff quot;
+  eq: bool = const false;
+  lt: bool = const false;
+  gt: bool = const true;
+  le: bool = const false;
+  ge: bool = const true;
+  print eq lt gt le ge;
+}

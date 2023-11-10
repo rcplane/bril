@@ -1,0 +1,17 @@
+@main {
+  i: int = const 0;
+  j: int = const 0;
+  one: int = const 1;
+  five: int = const 5;
+.loop.header:
+  done: bool = eq i five;
+  br done .loop.exit .loop.body;
+.loop.body:
+  i: int = add i one;
+  # j is dead because k is dead
+  j: int = add j one;
+  # k is dead 
+  k: int = id j;
+  jmp .loop.header;
+.loop.exit:
+}

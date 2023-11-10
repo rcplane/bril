@@ -1,0 +1,9 @@
+@main {
+  i: int = const 0;
+  cond: bool = const true;
+  br cond .hi .bye;
+.hi:
+  i: int = const 1;
+.bye:
+  print i;
+}

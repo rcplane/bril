@@ -1,0 +1,5 @@
+@main {
+  a: int = const 1;
+  x: int = add a a;
+  x: int = const 0;
+}

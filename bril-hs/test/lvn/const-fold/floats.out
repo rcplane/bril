@@ -1,0 +1,13 @@
+@main {
+  fsum: float = const 10;
+  fprod: float = const 16;
+  fdiff: float = const 6;
+  fquot: float = const 4;
+  print fsum fprod fdiff fquot;
+  feq: bool = const false;
+  flt: bool = const false;
+  fgt: bool = const true;
+  fle: bool = const false;
+  fge: bool = const true;
+  print feq flt fgt fle fge;
+}

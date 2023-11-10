@@ -1,0 +1,194 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.35.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           bril-hs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/bril-hs#readme>
+homepage:       https://github.com/githubuser/bril-hs#readme
+bug-reports:    https://github.com/githubuser/bril-hs/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2023 Author name here
+license:        BSD3
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/bril-hs
+
+library
+  exposed-modules:
+      Bril.BasicBlock
+      Bril.CFG
+      Bril.CFG.NodeMap
+      Bril.Dataflow
+      Bril.Dominator
+      Bril.Expr
+      Bril.Fresh
+      Bril.Func
+      Bril.Instr
+      Bril.Literal
+      Bril.Optimizations.DCE
+      Bril.Optimizations.DCE.Trivial
+      Bril.Optimizations.DCE.Trivial.Global
+      Bril.Optimizations.DCE.Trivial.Local
+      Bril.Optimizations.LVN
+      Bril.Optimizations.LVN.RenameTable
+      Bril.Optimizations.LVN.Table
+      Bril.Parse
+      Bril.Phi
+      Bril.Program
+      Bril.SSA
+      Bril.Type
+  other-modules:
+      Paths_bril_hs
+  hs-source-dirs:
+      src
+  default-extensions:
+      TypeApplications
+      BlockArguments
+      ImportQualifiedPost
+      NoFieldSelectors
+      DuplicateRecordFields
+      OverloadedStrings
+      LambdaCase
+      NamedFieldPuns
+      DeriveFunctor
+      DeriveFoldable
+      DeriveTraversable
+      TypeSynonymInstances
+      FlexibleInstances
+      ScopedTypeVariables
+      GADTs
+      TemplateHaskell
+      KindSignatures
+      FlexibleContexts
+      TypeFamilies
+      TypeOperators
+      DataKinds
+      AllowAmbiguousTypes
+      TupleSections
+      MultiParamTypeClasses
+      GeneralizedNewtypeDeriving
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -O2 -fplugin=Effectful.Plugin
+  build-depends:
+      aeson
+    , aeson-pretty
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , lattices
+    , lens
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
+
+executable bril-hs-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_bril_hs
+  hs-source-dirs:
+      app
+  default-extensions:
+      TypeApplications
+      BlockArguments
+      ImportQualifiedPost
+      NoFieldSelectors
+      DuplicateRecordFields
+      OverloadedStrings
+      LambdaCase
+      NamedFieldPuns
+      DeriveFunctor
+      DeriveFoldable
+      DeriveTraversable
+      TypeSynonymInstances
+      FlexibleInstances
+      ScopedTypeVariables
+      GADTs
+      TemplateHaskell
+      KindSignatures
+      FlexibleContexts
+      TypeFamilies
+      TypeOperators
+      DataKinds
+      AllowAmbiguousTypes
+      TupleSections
+      MultiParamTypeClasses
+      GeneralizedNewtypeDeriving
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -O2 -fplugin=Effectful.Plugin -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , aeson-pretty
+    , base >=4.7 && <5
+    , bril-hs
+    , bytestring
+    , containers
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , lattices
+    , lens
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
+
+test-suite bril-hs-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_bril_hs
+  hs-source-dirs:
+      test
+  default-extensions:
+      TypeApplications
+      BlockArguments
+      ImportQualifiedPost
+      NoFieldSelectors
+      DuplicateRecordFields
+      OverloadedStrings
+      LambdaCase
+      NamedFieldPuns
+      DeriveFunctor
+      DeriveFoldable
+      DeriveTraversable
+      TypeSynonymInstances
+      FlexibleInstances
+      ScopedTypeVariables
+      GADTs
+      TemplateHaskell
+      KindSignatures
+      FlexibleContexts
+      TypeFamilies
+      TypeOperators
+      DataKinds
+      AllowAmbiguousTypes
+      TupleSections
+      MultiParamTypeClasses
+      GeneralizedNewtypeDeriving
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -O2 -fplugin=Effectful.Plugin -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Glob
+    , aeson
+    , aeson-pretty
+    , base >=4.7 && <5
+    , bril-hs
+    , bytestring
+    , containers
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , hspec
+    , lattices
+    , lens
+    , optparse-applicative
+    , process
+    , text
+  default-language: Haskell2010

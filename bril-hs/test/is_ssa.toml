@@ -1,0 +1,16 @@
+extract = '(yes|no)'
+benchmarks = '../benchmarks/*/*.bril'
+
+[runs.baseline]
+pipeline = [
+    "bril2json",
+    "brili -p {args} > /dev/null",
+    "echo yes"
+]
+
+[runs.is_ssa]
+pipeline = [
+    "bril2json",
+    "stack run -- --ssa",
+    "python ../examples/is_ssa.py",
+]

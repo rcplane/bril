@@ -1,0 +1,6 @@
+@main {
+  disj: bool = const true;
+  conj: bool = const false;
+  neg: bool = const false;
+  print disj conj neg;
+}

@@ -1,0 +1,19 @@
+@main {
+  eight: int = const 8;
+  two: int = const 2;
+
+  sum: int = add eight two;
+  prod: int = mul eight two;
+  diff: int = sub eight two;
+  quot: int = div eight two;
+
+  print sum prod diff quot;
+
+  eq: bool = eq eight two;
+  lt: bool = lt eight two;
+  gt: bool = gt eight two;
+  le: bool = le eight two;
+  ge: bool = ge eight two;
+
+  print eq lt gt le ge;
+}

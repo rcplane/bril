@@ -1,0 +1,10 @@
+@main {
+  a: int = const 0;
+.lbl:
+  b: int = id a;
+  c: int = id b;
+  d: int = id c;
+  a: int = const 1;
+  # b should be replaced with d
+  print b;
+}

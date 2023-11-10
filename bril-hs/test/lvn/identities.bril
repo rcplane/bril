@@ -1,0 +1,12 @@
+@main {
+  one: int = const 1;
+  two: int = const 2;
+
+  sum: int = add one two;
+  sum1: int = add two one;
+
+  prod: int = mul one two;
+  prod1: int = mul two one;
+
+  print sum sum1 prod prod;
+}

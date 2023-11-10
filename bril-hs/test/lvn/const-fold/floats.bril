@@ -1,0 +1,19 @@
+@main {
+  feight: float = const 8.0;
+  ftwo: float = const 2.0;
+
+  fsum: float = fadd feight ftwo;
+  fprod: float = fmul feight ftwo;
+  fdiff: float = fsub feight ftwo;
+  fquot: float = fdiv feight ftwo;
+
+  print fsum fprod fdiff fquot;
+
+  feq: bool = feq feight ftwo;
+  flt: bool = flt feight ftwo;
+  fgt: bool = fgt feight ftwo;
+  fle: bool = fle feight ftwo;
+  fge: bool = fge feight ftwo;
+
+  print feq flt fgt fle fge;
+}

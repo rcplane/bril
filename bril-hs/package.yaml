@@ -1,0 +1,102 @@
+name:                bril-hs
+version:             0.1.0.0
+github:              "githubuser/bril-hs"
+license:             BSD3
+author:              "Author name here"
+maintainer:          "example@example.com"
+copyright:           "2023 Author name here"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/bril-hs#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- bytestring
+- aeson
+- aeson-pretty
+- text
+- containers
+- optparse-applicative
+- effectful-core
+- effectful-th
+- effectful-plugin
+- lens
+- lattices
+
+default-extensions:
+- TypeApplications
+- BlockArguments
+- ImportQualifiedPost
+- NoFieldSelectors
+- DuplicateRecordFields
+- OverloadedStrings
+- LambdaCase
+- NamedFieldPuns
+- DeriveFunctor
+- DeriveFoldable
+- DeriveTraversable
+- TypeSynonymInstances
+- FlexibleInstances
+- ScopedTypeVariables
+- GADTs
+- TemplateHaskell
+- KindSignatures
+- FlexibleContexts
+- TypeFamilies
+- TypeOperators
+- DataKinds
+- AllowAmbiguousTypes
+- TupleSections
+- MultiParamTypeClasses
+- GeneralizedNewtypeDeriving
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wmissing-export-lists
+- -Wmissing-home-modules
+- -Wpartial-fields
+- -Wredundant-constraints
+- -O2
+- -fplugin=Effectful.Plugin
+
+library:
+  source-dirs: src
+
+executables:
+  bril-hs-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - bril-hs
+
+tests:
+  bril-hs-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - bril-hs
+    - containers
+    - process
+    - hspec
+    - Glob

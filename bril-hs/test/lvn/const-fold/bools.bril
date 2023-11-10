@@ -1,0 +1,10 @@
+@main {
+  tru: bool = const true;
+  fls: bool = const false;
+
+  disj: bool = or tru fls;
+  conj: bool = and tru fls;
+  neg: bool = not tru;
+
+  print disj conj neg;
+}
