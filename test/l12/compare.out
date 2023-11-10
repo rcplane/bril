@@ -4,76 +4,109 @@ CS 6120 L12 dynamic compilers: trace executions of bril programs, stitch lvn dce
  birthday 23 from trace dce lvn
  birthday 22 from trace dce lvn miss
  birthday 50 from trace dce lvn miss
+ and last three again default profiling dce lvn
  and last three again default profiling
  
  gcd 4 20 record trace
  gcd 4 20 from trace dce lvn
  gcd 4 80 from trace dce lvn ?hit
  gcd 3 21 from trace dce lvn miss
+ and last three again default profiling dce lvn
  and last three again default profiling
  
  perfect 496 record trace
  perfect 496 from trace dce lvn
  perfect 28  from trace dce lvn ?hit
  perfect 12  from trace dce lvn miss
+ and last three again default profiling dce lvn
  and last three again default profiling
-+./test/l12/compare.sh:26> bril2json
-+./test/l12/compare.sh:26> brili -p -t benchmarks/core/birthday.trace 23
+ prerequisite usual brili deno and haskell ghc and stack installs
+ https://github.com/rcplane/bril/tree/l12#reference-interpreter
+ https://github.com/rcplane/bril/tree/l12/bril-hs#usage 
++./test/l12/compare.sh:33> bril2json
++./test/l12/compare.sh:33> brili -p -t benchmarks/core/birthday.trace 23
 0.50729723432398566
 total_dyn_inst: 484
-+./test/l12/compare.sh:27> cat benchmarks/core/birthday.trace
-+./test/l12/compare.sh:27> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
-+./test/l12/compare.sh:27> brili -p -i benchmarks/core/birthday.args
++./test/l12/compare.sh:34> cat benchmarks/core/birthday.trace
++./test/l12/compare.sh:34> brili -p -i benchmarks/core/birthday.args
++./test/l12/compare.sh:34> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
 0.50729723432398566
-total_dyn_inst: 348
+total_dyn_inst: 325
 0.47569530766255030
-total_dyn_inst: 333
+total_dyn_inst: 311
 0.97037357957798842
-total_dyn_inst: 753
-+./test/l12/compare.sh:28> bril2json
-+./test/l12/compare.sh:28> brili -p -i benchmarks/core/birthday.args
+total_dyn_inst: 703
++./test/l12/compare.sh:35> bril2json
++./test/l12/compare.sh:35> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
++./test/l12/compare.sh:35> brili -p -i benchmarks/core/birthday.args
+0.50729723432398566
+total_dyn_inst: 254
+0.47569530766255030
+total_dyn_inst: 243
+0.97037357957798842
+total_dyn_inst: 551
++./test/l12/compare.sh:36> bril2json
++./test/l12/compare.sh:36> brili -p -i benchmarks/core/birthday.args
 0.50729723432398566
 total_dyn_inst: 484
 0.47569530766255030
 total_dyn_inst: 463
 0.97037357957798842
 total_dyn_inst: 1051
-+./test/l12/compare.sh:30> bril2json
-+./test/l12/compare.sh:30> brili -p -t benchmarks/core/gcd.trace 4 20
++./test/l12/compare.sh:38> bril2json
++./test/l12/compare.sh:38> brili -p -t benchmarks/core/gcd.trace 4 20
 4
 total_dyn_inst: 46
-+./test/l12/compare.sh:31> cat benchmarks/core/gcd.trace
-+./test/l12/compare.sh:31> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
-+./test/l12/compare.sh:31> brili -p -i benchmarks/core/gcd.args
++./test/l12/compare.sh:39> cat benchmarks/core/gcd.trace
++./test/l12/compare.sh:39> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
++./test/l12/compare.sh:39> brili -p -i benchmarks/core/gcd.args
 4
 total_dyn_inst: 63
 4
 total_dyn_inst: 243
 3
 total_dyn_inst: 87
-+./test/l12/compare.sh:32> bril2json
-+./test/l12/compare.sh:32> brili -p -i benchmarks/core/gcd.args
++./test/l12/compare.sh:40> bril2json
++./test/l12/compare.sh:40> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
++./test/l12/compare.sh:40> brili -p -i benchmarks/core/gcd.args
 4
 total_dyn_inst: 46
 4
 total_dyn_inst: 181
 3
 total_dyn_inst: 64
-+./test/l12/compare.sh:34> bril2json
-+./test/l12/compare.sh:34> brili -p -t benchmarks/core/perfect.trace 496
++./test/l12/compare.sh:41> bril2json
++./test/l12/compare.sh:41> brili -p -i benchmarks/core/gcd.args
+4
+total_dyn_inst: 46
+4
+total_dyn_inst: 181
+3
+total_dyn_inst: 64
++./test/l12/compare.sh:43> bril2json
++./test/l12/compare.sh:43> brili -p -t benchmarks/core/perfect.trace 496
 0
 total_dyn_inst: 232
-+./test/l12/compare.sh:35> cat benchmarks/core/perfect.trace
-+./test/l12/compare.sh:35> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
-+./test/l12/compare.sh:35> brili -p -i benchmarks/core/perfect.args
++./test/l12/compare.sh:44> cat benchmarks/core/perfect.trace
++./test/l12/compare.sh:44> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
++./test/l12/compare.sh:44> brili -p -i benchmarks/core/perfect.args
 0
 total_dyn_inst: 371
 0
 total_dyn_inst: 98
 1
 total_dyn_inst: 67
-+./test/l12/compare.sh:36> bril2json
-+./test/l12/compare.sh:36> brili -p -i benchmarks/core/perfect.args
++./test/l12/compare.sh:45> bril2json
++./test/l12/compare.sh:45> stack --stack-yaml bril-hs/stack.yaml run -- --dce --lvn
++./test/l12/compare.sh:45> brili -p -i benchmarks/core/perfect.args
+0
+total_dyn_inst: 231
+0
+total_dyn_inst: 57
+1
+total_dyn_inst: 36
++./test/l12/compare.sh:46> bril2json
++./test/l12/compare.sh:46> brili -p -i benchmarks/core/perfect.args
 0
 total_dyn_inst: 232
 0
