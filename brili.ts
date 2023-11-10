@@ -334,8 +334,9 @@ type State = {
   // whether to emit the captured trace.
   emitTrace: boolean,
 
-  // TraceMap a mapping from functions to traced starting labels
-  traceMap: Map<string, { headerLabel: string, trace: bril.Instruction[] }[]>,
+  // tracemap[function][headerLabel] = is the trace beginning at 
+  // headerLabel in function function
+  traceMap: Map<string, Map<string, bril.Instruction[]>>,
   
   // For SSA (phi-node) execution: keep track of recently-seen labels.j
   curlabel: string | null,
@@ -470,7 +471,6 @@ const addRecoveryPostfix = (label: string) => `${label}.recover`;
  * instruction or "end" to terminate the function.
  */
 function evalInstr(instr: bril.Instruction, state: State): Action {
-  //console.log(JSON.stringify(instr)); // instead conditionally emit trace at end of function
   state.icount++;
 
   // Check that we have the right number of arguments.
@@ -493,8 +493,6 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   // call and ret are never emitted to streamline interprocedural trace inlining
   if (state.tracing && instr.op !== 'call' && instr.op !== 'ret') {
     //console.error(`Capturing trace for ${instr.op} instruction`);
-    const encoder = new TextEncoder();
-    Deno.stderr.write(encoder.encode(`${instr.op} `));
     state.traceBuffer.push(instr);
     if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
      if (state.traceBuffer.length > 10000) {
@@ -951,12 +949,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
             --i;  // Execute the label next.
             // if jmping upward in instruction count (decreasing) then start or stop tracing
             if (i < currentIndex) {
-              if (!state.tracing) {
-                // begin tracing
-                state.headerLabel = action.label; //= ".recover"; //l_recover
-                // TODO stitch on // state.traceBuffer.push({"label": action.label + ".trace"});
-                state.traceBuffer.push({"op":"speculate"}) ;
-              } else {
+              if (state.tracing) {
                 if (state.headerLabel === null) {
                   throw new Error("Error: header label null when emitting trace");
                 }
@@ -966,13 +959,17 @@ function evalFunc(func: bril.Function, state: State): Value | null {
                 state.traceBuffer.push({ op: "commit" });
                 // After executing the loop body, we should be back to the target of the back edge
                 state.traceBuffer.push({ op: "jmp", labels: [action.label] }); // l2, may equal l1 the headerLabel
-                state.traceMap.get(func.name)?.push({ 
-                  headerLabel: state.headerLabel, 
-                  trace: state.traceBuffer
-                });     
+                // Add the completed trace to the trace map
+                state.traceMap.get(func.name)?.set(state.headerLabel, state.traceBuffer);
                 state.traceBuffer = [];
+                state.tracing = false;
+              } else if (!state.traceMap.get(func.name)?.has(action.label)) {
+                 // If we have not yet recorded a trace for this label, begin tracing
+                 state.headerLabel = action.label; //= ".recover"; //l_recover
+                 // TODO stitch on // state.traceBuffer.push({"label": action.label + ".trace"});
+                 state.traceBuffer.push({ op: "speculate" });
+                 state.tracing = true;
               }
-              state.tracing = !state.tracing;
             }
             break;
           }
@@ -982,6 +979,10 @@ function evalFunc(func: bril.Function, state: State): Value | null {
         }
       }
     } else if ('label' in line) {
+      if (state.traceMap.get(func.name)?.has(line.label)) {
+        // We encounter the header label of an inner loop we have already traced
+        abortTracing(state);
+      }
       // Update CFG tracking for SSA phi nodes.
       state.lastlabel = state.curlabel;
       state.curlabel = line.label;
@@ -1084,11 +1085,9 @@ function evalProg(prog: bril.Program) {
 
   // Check for -t flag to specify tracing file or -t without argument to log to console
   let tracingFile = "";
-  let captureTrace = false;
   const tracingIndex = args.indexOf('-t');
   if (tracingIndex > -1) {
     console.error("should trace");
-    captureTrace = true;
     tracingFile = args[tracingIndex + 1];
     if (!tracingFile) {
       //tracingFile = "";
@@ -1136,13 +1135,14 @@ function evalProg(prog: bril.Program) {
     evalFunc(main, state);
     checkHeap(heap);
     printProfiling(profiling, state.icount);
+    console.log(state.traceMap);
   }
 }
 
 function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracingFile: string): State {
   const traceMap = new Map();
   for (const func of funcs) {
-    traceMap.set(func.name, []);
+    traceMap.set(func.name, new Map());
   }
   return {
     funcs,
