@@ -1076,55 +1076,56 @@ function parseMainArguments(expected: bril.Argument[], args: string[]) : Env {
   return newEnv;
 }
 
-function evalProg(prog: bril.Program) {
-  const heap = new Heap<Value>()
-  const main = findFunc("main", prog.functions);
-  if (main === null) {
-    console.warn(`no main function defined, doing nothing`);
-    return;
-  }
-
-  // Parse command line arguments
-  const args: string[] = Array.from(Deno.args);
-  
-  // Check for -p flag to enable optional dynamic instruction count profiling
-  let profiling = false;
-  if (args.includes('-p')) {
-    profiling = true;
-    args.splice(args.indexOf('-p'), 1); // remove after handling
-  }
-
-  // Check for -t flag to specify tracing file or -t without argument to log to console
-  let tracingFile = "";
-  const tracingIndex = args.indexOf('-t');
-  if (tracingIndex > -1) {
-    console.error("should trace");
-    tracingFile = args[tracingIndex + 1];
-    if (!tracingFile) {
-      //tracingFile = "";
-      //args.splice(tracingIndex, 1);
-      throw new Error('Tracing file option given but path not provided');
-    } else {
-      // remove -t and tracing file path from args
-      args.splice(tracingIndex, 2);
+async function evalProg(prog: bril.Program): Promise<State> {
+  return new Promise((resolve, reject) => {
+    const heap = new Heap<Value>()
+    const main = findFunc("main", prog.functions);
+    if (main === null) {
+      reject( error(`no main function defined, doing nothing`) );
     }
-    console.error(`Tracing to file ${tracingFile}`);
-    //test write to trace file 
-    //Deno.writeTextFileSync(tracingFile, "test\n");
-    //console.error(`args remaining: ${args}`);
-  }
 
-  // Allow inline args for backward compatibility, or arguments from a -i file one set per line, not both
-  const expected = main.args || [];
-  // Check for -i flag to specify input file
-  const inputIndex = args.indexOf('-i');
-  if (inputIndex > -1) {
-    const inputFile = args[inputIndex + 1];
-    if (!inputFile) {
-      throw new Error('Input main function args per line file option given but path not provided');
+    // Parse command line arguments
+    const args: string[] = Array.from(Deno.args);
+    
+    // Check for -p flag to enable optional dynamic instruction count profiling
+    let profiling = false;
+    if (args.includes('-p')) {
+      profiling = true;
+      args.splice(args.indexOf('-p'), 1); // remove after handling
     }
-    Deno.readTextFile(inputFile).then((input) => {
-      const inputLines = input.trim().split('\n');
+
+    // Check for -t flag to specify tracing file or -t without argument to log to console
+    let tracingFile = "";
+    const tracingIndex = args.indexOf('-t');
+    if (tracingIndex > -1) {
+      console.error("should trace");
+      tracingFile = args[tracingIndex + 1];
+      if (!tracingFile) {
+        //tracingFile = "";
+        //args.splice(tracingIndex, 1);
+        throw new Error('Tracing file option given but path not provided');
+      } else {
+        // remove -t and tracing file path from args
+        args.splice(tracingIndex, 2);
+      }
+      console.error(`Tracing to file ${tracingFile}`);
+      //test write to trace file 
+      //Deno.writeTextFileSync(tracingFile, "test\n");
+      //console.error(`args remaining: ${args}`);
+    }
+
+    // Allow inline args for backward compatibility, or arguments from a -i file one set per line, not both
+    const expected = main.args || [];
+    // Check for -i flag to specify input file
+    const inputIndex = args.indexOf('-i');
+    if (inputIndex > -1) {
+      const inputFile = args[inputIndex + 1];
+      if (!inputFile) {
+        throw new Error('Input main function args per line file option given but path not provided');
+      }
+      const fileContents = Deno.readFileSync(inputFile);  // await readFile?
+      //const text = new TextDecoder("utf-8").decode(fileContents);
+      const inputLines = fileContents.split("\n").trim().split('\n');
       inputLines.forEach(argSet => {
         let newEnv: Env;
         if (inputIndex > -1) {
@@ -1136,18 +1137,17 @@ function evalProg(prog: bril.Program) {
           printProfiling(profiling, state.icount);
         }
       });
-    }).catch((error) => {
-      console.error(error);
-    });
-  } else {
-    // Parse inline args remaining after flags as main bril function arguments per usual
-    const newEnv = parseMainArguments(expected, args);
-    const state: State = createState(prog.functions, heap, newEnv, tracingFile);
-    evalFunc(main, state);
-    checkHeap(heap);
-    printProfiling(profiling, state.icount);
-    console.log(state.traceMap);
-  }
+    } else {
+      // Parse inline args remaining after flags as main bril function arguments per usual
+      const newEnv = parseMainArguments(expected, args);
+      const state: State = createState(prog.functions, heap, newEnv, tracingFile);
+      evalFunc(main, state);
+      checkHeap(heap);
+      printProfiling(profiling, state.icount);
+      console.log(state.traceMap);
+      resolve( state );
+    }
+  });
 }
 
 function createState(funcs: bril.Function[], heap: Heap<Value>, env: Env, tracingFile: string): State {
@@ -1205,11 +1205,54 @@ function emitTrace(state: State, funcName: string): void {
   }
 }
 
+const addTracePostfix = (label: string) => `${label}.trace`;
+
+/**
+ * Stitch all traces of `state.traceMap` into `prog`, modifying `prog` in place.
+ * 
+ * @param prog The program to modify
+ * @param state the state produced by executing `prog`
+ */
+const stitch = (prog: bril.Program, state: State) => {
+  for (const func of prog.functions) {
+    const traces = state.traceMap.get(func.name);
+    if (!traces) {
+      throw new Error(`Error: no traces for function ${func.name}`);
+    }
+    // add explicit return at end of function in case there is an _implicit_ return
+    // this is necessary because we are adding a new label to the end of the function
+    func.instrs.push({ op: 'ret' });
+    for (const [headerLabel, trace] of traces.entries()) {
+      const headerIndex = indexOfLabel(func, headerLabel);
+      const traceLabel = addTracePostfix(headerLabel);
+      // headerIndex     -- l1:
+      // headerIndex + 1 --   jmp l1.trace;
+      // headerIndex + 2 -- l1.recover:
+      // headerIndex + 3 --   ...rest of loop body
+      const splicedInstrs: (bril.Instruction | bril.Label)[] = [
+        {
+          op: 'jmp',
+          labels: [traceLabel]
+        },
+        {
+          label: addRecoveryPostfix(headerLabel)
+        },
+      ];
+      // insert `splicedInstrs` before the instruction at index `headerIndex + 1`
+      // That is, insert `splicedInstrs` after the `headerLabel`
+      func.instrs.splice(headerIndex + 1, 0, ...splicedInstrs);
+      // add the trace label, followed by the trace instructions
+      func.instrs.push({ label: traceLabel }, ...trace);
+    }
+  }
+};
+
 async function main() {
   try {
     const prog = JSON.parse(await readStdin()) as bril.Program;
     uniqueLocals(prog);
-    evalProg(prog);
+    const state = await evalProg(prog);
+    stitch(prog, state);
   }
   catch(e) {
     if (e instanceof BriliError) {
