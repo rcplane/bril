@@ -12,7 +12,7 @@ data Literal
   = Int Int64
   | Float Double
   | Bool Bool
-  deriving (Show)
+  deriving (Show, Eq)
 
 parseForMaybeType :: Maybe Type -> Value -> Parser Literal
 parseForMaybeType (Just ty) j = parseForType ty j

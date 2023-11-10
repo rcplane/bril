@@ -74,6 +74,7 @@ instance (Ord a) => Eq (Expr' a) where
   And x y == And m n = sort [x, y] == sort [m, n]
   Or x y == Or m n = sort [x, y] == sort [m, n]
   Id x == Id y = x == y
+  Const x == Const y = x == y
   _ == _ = False
 
 -- | The operands used by an expression
