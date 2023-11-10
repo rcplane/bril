@@ -77,6 +77,7 @@ instance ControlFlow (Instr' a) where
 
   labels (Jmp l) = [l]
   labels (Br _ t f) = [t, f]
+  labels (Guard _ l) = [l]
   labels _ = []
 
 -- | The variable defined by an instruction, if any
@@ -106,7 +107,6 @@ isTerminator :: Instr' a -> Bool
 isTerminator (Ret _) = True
 isTerminator (Jmp _) = True
 isTerminator (Br {}) = True
-isTerminator (Guard _ _) = True
 isTerminator _ = False
 
 parseUnary :: (Text -> Expr) -> Object -> Parser Instr

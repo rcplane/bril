@@ -406,7 +406,7 @@ function evalCall(instr: bril.Operation, state: State): Action {
   const retVal = evalFunc(func, newState);
   state.icount = newState.icount;
 
-  emitTrace(state, funcName);
+  //emitTrace(state, funcName);
 
   // Dynamically check the function's return value and type.
   if (!('dest' in instr)) {  // `instr` is an `EffectOperation`.
@@ -493,7 +493,9 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   // call and ret are never emitted to streamline interprocedural trace inlining
   if (state.tracing && instr.op !== 'call' && instr.op !== 'ret') {
     //console.error(`Capturing trace for ${instr.op} instruction`);
-    state.traceBuffer.push(instr);
+    if (instr.op !== 'jmp' && instr.op !== 'br') {
+      state.traceBuffer.push(instr);
+    }
     if (BigInt(state.icount) % BigInt(100) === BigInt(0)) {
      if (state.traceBuffer.length > 10000) {
        // trace too large, stop capturing and reset
@@ -504,39 +506,39 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
       }
     }
 
-        if (instr.op === 'br' || instr.op === 'jmp') {
-          if (instr.op === 'br') {
-            // generate appropriate guards based on the condition
-            const conditionValue = getBool(instr, state.env, 0);
-            if (state.headerLabel === null) {
-              throw new Error("guard label null");
-            }
-            const recoveryLabel = addRecoveryPostfix(state.headerLabel);
-            if (conditionValue) {
-              state.traceBuffer.push({
-                op: "guard",
-                args: instr.args, 
-                labels: [recoveryLabel]
-              });
-            } else {
-              const [ condition ] = instr.args!;
-              const dest = `${condition}.negated`;
-              // negate the branch condition
-              state.traceBuffer.push({
-                args: instr.args,
-                dest,
-                op: "not", 
-                type: "bool"
-              });
-              state.traceBuffer.push({
-                args: [dest], 
-                labels: [recoveryLabel], 
-                op: "guard"
-              });
-            }
-          }
-        // jmp is not conditional , we'll just capture it in the trace
+    if (instr.op === 'br' || instr.op === 'jmp') {
+      if (instr.op === 'br') {
+        // generate appropriate guards based on the condition
+         const conditionValue = getBool(instr, state.env, 0);
+        if (state.headerLabel === null) {
+          throw new Error("guard label null");
         }
+        const recoveryLabel = addRecoveryPostfix(state.headerLabel);
+        if (conditionValue) {
+           state.traceBuffer.push({
+            op: "guard",
+            args: instr.args, 
+            labels: [recoveryLabel]
+          });
+        } else {
+          const [ condition ] = instr.args!;
+          const dest = `${condition}.negated`;
+          // negate the branch condition
+            state.traceBuffer.push({
+            args: instr.args,
+            dest,
+            op: "not", 
+            type: "bool"
+          });
+           state.traceBuffer.push({
+            args: [dest], 
+            labels: [recoveryLabel], 
+            op: "guard"
+          });
+         }
+      }
+     // jmp is not conditional , we'll just capture it in the trace
+     }
     }
     
 
@@ -1005,7 +1007,7 @@ function evalFunc(func: bril.Function, state: State): Value | null {
     throw error(`implicit return in speculative state`);
   }
 
-  emitTrace(state, func.name);
+  //emitTrace(state, func.name);
 
   return null;
 }
@@ -1098,7 +1100,7 @@ async function evalProg(prog: bril.Program): Promise<State> {
     let tracingFile = "";
     const tracingIndex = args.indexOf('-t');
     if (tracingIndex > -1) {
-      console.error("should trace");
+      //console.error("should trace");
       tracingFile = args[tracingIndex + 1];
       if (!tracingFile) {
         //tracingFile = "";
@@ -1108,7 +1110,7 @@ async function evalProg(prog: bril.Program): Promise<State> {
         // remove -t and tracing file path from args
         args.splice(tracingIndex, 2);
       }
-      console.error(`Tracing to file ${tracingFile}`);
+      //console.error(`Tracing to file ${tracingFile}`);
       //test write to trace file 
       //Deno.writeTextFileSync(tracingFile, "test\n");
       //console.error(`args remaining: ${args}`);
@@ -1123,10 +1125,9 @@ async function evalProg(prog: bril.Program): Promise<State> {
       if (!inputFile) {
         throw new Error('Input main function args per line file option given but path not provided');
       }
-      const fileContents = Deno.readFileSync(inputFile);  // await readFile?
-      //const text = new TextDecoder("utf-8").decode(fileContents);
-      const inputLines = fileContents.split("\n").trim().split('\n');
-      inputLines.forEach(argSet => {
+      const fileContents = new TextDecoder().decode(Deno.readFileSync(inputFile));
+      const inputLines = fileContents.trim().split('\n');
+      inputLines.forEach((argSet: string) => {
         let newEnv: Env;
         if (inputIndex > -1) {
           const inputArgs = argSet.trim().split(/\s+/);
@@ -1144,7 +1145,6 @@ async function evalProg(prog: bril.Program): Promise<State> {
       evalFunc(main, state);
       checkHeap(heap);
       printProfiling(profiling, state.icount);
-      console.log(state.traceMap);
       resolve( state );
     }
   });
@@ -1184,25 +1184,10 @@ function printProfiling(profiling: boolean, icount: bigint): void {
   }
 }
 
-function emitTrace(state: State, funcName: string): void {
-  if (state.tracing) {
-    if (state.emitTrace) {
-      // emit trace to tracing file or console
-      console.log("tracefile is " + state.tracingFile);
-      if (state.tracingFile != "") {
-        const toWrite = JSON.stringify(`{TRACE_START:${funcName}},\n${state.traceBuffer.join('')},\n{TRACE_END:${funcName}},\n`);
-        if(JSON.parse(toWrite)){
-          Deno.writeTextFileSync(state.tracingFile!, toWrite);
-        } else {
-          throw new Error('Invalid trace JSON');
-        }
-      } else {
-        console.log(JSON.stringify(`{TRACE_START:${funcName}},\n${state.traceBuffer.join('')},\n{TRACE_END:${funcName}},`));
-      }
-      console.error(`Emitted ${state.traceBuffer.length} trace lines for function ${funcName}`);
-      state.traceBuffer = []; // reset trace buffer
-    }
-  }
+/** Stiches traces into the program and writes the result to the tracing file */
+async function emitStitched(prog: bril.Program, state: State): Promise<void> {
+  stitch(prog, state);
+  await Deno.writeTextFile(state.tracingFile!, JSON.stringify(prog));
 }
 
 const addTracePostfix = (label: string) => `${label}.trace`;
@@ -1252,7 +1237,9 @@ async function main() {
     const prog = JSON.parse(await readStdin()) as bril.Program;
     uniqueLocals(prog);
     const state = await evalProg(prog);
-    stitch(prog, state);
+    if (state.tracingFile) {
+      await emitStitched(prog, state);
+    }
   }
   catch(e) {
     if (e instanceof BriliError) {
